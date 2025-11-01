@@ -3,7 +3,7 @@
   "name": "CGM panel widget",
   "description": "CGM glucose monitor with real-time display and historical graph",
   "shell-version": ["47", "48", "49"],
-  "version": 1,
+  "version": 4,
   "url": "https://github.com/bramgn/gnome-cgm-panel",
   "settings-schema": ""
 }

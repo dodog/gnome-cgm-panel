@@ -21,7 +21,7 @@ Monitor your blood glucose levels directly from the Gnome Shell panel with suppo
 ## Installation
 
 ### From GNOME Extensions Website
-*(Coming soon)*
+See https://extensions.gnome.org/extension/8546/gnome-cgm-panel/
 
 ### Manual Installation
 1. Clone this repository:

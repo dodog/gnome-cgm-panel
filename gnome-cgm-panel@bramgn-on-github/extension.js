@@ -20,7 +20,7 @@ const CONSTANTS = {
     FETCH_INTERVAL_MIN: 30, // seconds
     DEFAULT_CGM_INTERVAL: 1, // minutes
     INITIAL_HISTORY_FETCH_HOURS: 50,
-    PANEL_LABEL_PREFIX: 'BS: ',
+    PANEL_LABEL_PREFIX: '',
     TREND_ARROWS: {
         RAPID_RISE: '↗↗',
         MODERATE_RISE: '↗',
