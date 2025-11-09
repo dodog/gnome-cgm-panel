@@ -64,9 +64,6 @@ class MyExtension extends PanelMenu.Button {
         this._config = new Config();
         this._cache = new Cache();
         
-        // Setup logger
-        this._log = () => {}; // Default to no-op
-        
         // Monitor config file for changes
         this._setupConfigMonitor();
         
@@ -150,7 +147,7 @@ class MyExtension extends PanelMenu.Button {
     }
     
     _initializeConfig() {
-        this._debugEnabled = this._config.get('debug') || false; // Change: add || false
+        this._debugEnabled = this._config.get('debug') || false;
         this._log('Initializing config...');
 
         // Nightscout config from file
@@ -203,6 +200,7 @@ class MyExtension extends PanelMenu.Button {
 
     _initializeDataState() {
         this._currentBG = null;
+        this._currentBGEntry = null; // Store full entry including direction
         this._lastUpdate = null;
         this._historyData = [];
         this._rawHistoryEntries = [];
@@ -487,6 +485,7 @@ class MyExtension extends PanelMenu.Button {
         
         const oldBG = this._currentBG;
         this._currentBG = entry.sgv;
+        this._currentBGEntry = entry; // Store full entry for direction field
         this._lastUpdate = new Date(entry.dateString || entry.date);
         
         if (isNaN(this._lastUpdate.getTime())) this._lastUpdate = new Date();
@@ -563,22 +562,52 @@ class MyExtension extends PanelMenu.Button {
     }
 
     _calculateTrend() {
-        if (!this._rawHistoryEntries || this._rawHistoryEntries.length < 2) return '';
+        // First check if the current reading has a direction field (from providers like LibreLink)
+        if (this._currentBGEntry && this._currentBGEntry.direction) {
+            const direction = this._currentBGEntry.direction;
+            this._log(`Using provider-supplied trend direction: ${direction}`);
+            
+            // Convert Nightscout direction strings to our arrow symbols
+            switch (direction) {
+                case 'DoubleUp': return CONSTANTS.TREND_ARROWS.RAPID_RISE;
+                case 'SingleUp': return CONSTANTS.TREND_ARROWS.MODERATE_RISE;
+                case 'FortyFiveUp': return CONSTANTS.TREND_ARROWS.MODERATE_RISE;
+                case 'Flat': return CONSTANTS.TREND_ARROWS.STABLE;
+                case 'FortyFiveDown': return CONSTANTS.TREND_ARROWS.MODERATE_FALL;
+                case 'SingleDown': return CONSTANTS.TREND_ARROWS.MODERATE_FALL;
+                case 'DoubleDown': return CONSTANTS.TREND_ARROWS.RAPID_FALL;
+                default: break; // Fall through to calculation
+            }
+        }
+        
+        // Fall back to calculating from history if no direction provided
+        if (!this._rawHistoryEntries || this._rawHistoryEntries.length < 2) {
+            this._log('Insufficient history for trend calculation');
+            return '';
+        }
         
         let recent = this._rawHistoryEntries.slice(0, 6)
             .filter(e => e.sgv != null && !isNaN(e.sgv))
             .sort((a, b) => new Date(b.dateString || b.date) - new Date(a.dateString || a.date));
         
-        if (recent.length < 2) return '';
+        if (recent.length < 2) {
+            this._log('Not enough valid recent entries for trend calculation');
+            return '';
+        }
         
         let newest = recent[0];
         let older = recent[Math.min(3, recent.length - 1)];
         
         let timeDiffMinutes = (new Date(newest.dateString) - new Date(older.dateString)) / (1000 * 60);
-        if (timeDiffMinutes <= 0 || timeDiffMinutes > 60) return '';
+        if (timeDiffMinutes <= 0 || timeDiffMinutes > 60) {
+            this._log(`Invalid time difference for trend: ${timeDiffMinutes} minutes`);
+            return '';
+        }
         
         let valueDiff = newest.sgv - older.sgv;
         let changePerMinute = valueDiff / timeDiffMinutes;
+        
+        this._log(`Calculated trend: ${changePerMinute.toFixed(2)} mg/dL per minute`);
         
         if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.RAPID_RISE) return CONSTANTS.TREND_ARROWS.RAPID_RISE;
         if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.MODERATE_RISE) return CONSTANTS.TREND_ARROWS.MODERATE_RISE;

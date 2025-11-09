@@ -80,7 +80,6 @@ export class LibreLinkProvider extends BaseProvider {
             // Set required headers
             Object.entries(REQUIRED_HEADERS).forEach(([key, value]) => {
                 message.get_request_headers().append(key, value);
-                this.log(`Header: ${key} = ${value}`);
             });
 
             const requestBody = JSON.stringify(loginData);
@@ -93,16 +92,12 @@ export class LibreLinkProvider extends BaseProvider {
                     const decoder = new TextDecoder('utf-8');
                     const response = decoder.decode(bytes.get_data());
                     
-                    // Get HTTP status
                     const status = message.get_status();
                     this.log(`HTTP Status: ${status}`);
-                    this.log(`Response length: ${response ? response.length : 0} chars`);
                     
                     if (!response || response.trim() === '') {
                         throw new Error(`Empty response from LibreLink login (HTTP ${status})`);
                     }
-                    
-                    this.log(`Response preview: ${response.substring(0, 200)}...`);
                     
                     const data = JSON.parse(response);
                     this.log(`Parsed response status: ${data.status}`);
@@ -124,13 +119,11 @@ export class LibreLinkProvider extends BaseProvider {
                     this.accountId = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, userId, -1);
 
                     this.log(`LibreLink login successful!`);
-                    this.log(`Token length: ${this.authToken ? this.authToken.length : 0}`);
                     this.log(`Token expires: ${this.tokenExpiry}`);
                     resolve();
                     
                 } catch (error) {
                     this.log(`LibreLink login error: ${error.message}`);
-                    this.log(`Full error: ${error.stack}`);
                     reject(error);
                 }
             });
@@ -250,6 +243,7 @@ export class LibreLinkProvider extends BaseProvider {
                         throw new Error('No glucose data in response');
                     }
 
+                    this.log(`LibreLink data received with ${data.data.graphData ? data.data.graphData.length : 0} history entries`);
                     resolve(data.data);
                     
                 } catch (error) {
@@ -267,7 +261,8 @@ export class LibreLinkProvider extends BaseProvider {
         // Convert LibreLink current reading to Nightscout format
         if (data.connection && data.connection.glucoseMeasurement) {
             const reading = data.connection.glucoseMeasurement;
-            return this._convertToNightscoutFormat(reading);
+            this.log(`Current reading: ${reading.ValueInMgPerDl} mg/dL, Trend: ${reading.TrendArrow}`);
+            return this._convertToNightscoutFormat(reading, true);
         }
         
         throw new Error('No current glucose measurement found');
@@ -279,30 +274,43 @@ export class LibreLinkProvider extends BaseProvider {
         
         // Convert LibreLink history to Nightscout format
         if (data.graphData && Array.isArray(data.graphData)) {
-            return data.graphData.map(reading => this._convertToNightscoutFormat(reading));
+            this.log(`Converting ${data.graphData.length} history entries`);
+            return data.graphData.map(reading => this._convertToNightscoutFormat(reading, false));
         }
         
         throw new Error('No glucose history found');
     }
 
-    _convertToNightscoutFormat(librelinkReading) {
-        // Convert LibreLink format to Nightscout format
-        return {
+    _convertToNightscoutFormat(librelinkReading, isCurrent = false) {
+        // LibreLink uses PascalCase field names
+        const result = {
             sgv: librelinkReading.ValueInMgPerDl || librelinkReading.Value,
             dateString: librelinkReading.Timestamp,
             date: new Date(librelinkReading.Timestamp).getTime(),
-            type: 'sgv',
-            direction: this._convertTrendArrow(librelinkReading.TrendArrow)
+            type: 'sgv'
         };
+
+        // Only current readings have TrendArrow, not historical data
+        if (isCurrent && librelinkReading.TrendArrow !== undefined) {
+            result.direction = this._convertTrendArrow(librelinkReading.TrendArrow);
+        }
+
+        return result;
     }
 
     _convertTrendArrow(librelinkTrend) {
-        // Convert LibreLink trend numbers to Nightscout direction strings
-        // Based on LibreLink documentation: 1=rising, 2=stable, 3=falling
+        // LibreLink trend arrow values:
+        // 1 = DoubleUp (rising rapidly)
+        // 2 = SingleUp (rising)
+        // 3 = Flat (stable)
+        // 4 = SingleDown (falling)
+        // 5 = DoubleDown (falling rapidly)
         switch (librelinkTrend) {
-            case 1: return 'SingleUp';
-            case 2: return 'Flat';
-            case 3: return 'SingleDown';
+            case 1: return 'DoubleUp';
+            case 2: return 'SingleUp';
+            case 3: return 'Flat';
+            case 4: return 'SingleDown';
+            case 5: return 'DoubleDown';
             default: return 'NONE';
         }
     }
