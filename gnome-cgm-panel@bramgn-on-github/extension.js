@@ -42,9 +42,11 @@ const CONSTANTS = {
 // Create a panel button with popup
 const MyExtension = GObject.registerClass(
 class MyExtension extends PanelMenu.Button {
-    _init() {
+    _init(extension) {
         super._init(0.0, 'Nightscout CGM');
         
+        this._extension = extension;  // Store reference
+
         // Initialize state
         this._isDestroyed = false;
         this._fetchInProgress = false;
@@ -749,6 +751,13 @@ class MyExtension extends PanelMenu.Button {
         this.menu.addMenuItem(timeLabelItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Add settings button
+        let settingsItem = new PopupMenu.PopupMenuItem('Settings');
+        settingsItem.connect('activate', () => {
+            this._extension.openPreferences();
+        });
+        this.menu.addMenuItem(settingsItem);
     }
 
     _calculateDelta() {
@@ -861,7 +870,7 @@ export default class CGMWidgetExtension extends Extension {
 
     enable() {
         console.log('Enabling CGM extension...');
-        this.extension = new MyExtension();
+        this.extension = new MyExtension(this);
         Main.panel.addToStatusArea('nightscout-cgm', this.extension);
         console.log('CGM extension enabled successfully');
     }
