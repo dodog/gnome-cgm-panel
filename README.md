@@ -71,7 +71,7 @@ See https://extensions.gnome.org/extension/8546/gnome-cgm-panel/
 ### Extension not showing data
 - Check your provider configuration in preferences
 - Verify network connectivity
-- Check logs: `journalctl -f -o cat /usr/bin/gnome-shell`
+- Check logs: `journalctl -f /usr/bin/gnome-shell | grep "CGM Widget"`
 
 ### LibreLink authentication issues
 - Verify credentials are correct
