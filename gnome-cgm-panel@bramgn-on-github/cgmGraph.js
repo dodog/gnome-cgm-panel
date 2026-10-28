@@ -132,6 +132,7 @@ export class CGMGraph {
         
         if (this.data.length === 0) {
             this._drawNoData(cr, width, height);
+            cr.$dispose();
             return;
         }
         
@@ -181,6 +182,9 @@ export class CGMGraph {
         
         // Draw axes labels
         this._drawLabels(cr, width, height, minValue, maxValue, startTime, now);
+
+        // Free the Cairo context
+        cr.$dispose();
     }
     
     _getColorForValue(value, thresholds) {
