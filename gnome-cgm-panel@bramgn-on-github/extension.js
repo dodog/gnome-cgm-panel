@@ -323,6 +323,7 @@ class MyExtension extends PanelMenu.Button {
             }
             
             this._updateColors();
+            this._reprocessHistory();
             return GLib.SOURCE_CONTINUE;
         });
         
@@ -428,8 +429,31 @@ class MyExtension extends PanelMenu.Button {
             });
     }
     
+    // Fix graph cut off
+    _getEntriesWithLatest() {
+        const entries = this._rawHistoryEntries ? [...this._rawHistoryEntries] : [];
+        const latest = this._currentBGEntry;
+
+        if (latest && latest.sgv != null) {
+            const latestTime = new Date(latest.dateString || latest.date).getTime();
+            if (!isNaN(latestTime)) {
+                const alreadyPresent = entries.some(e => {
+                    const t = new Date(e.dateString || e.date).getTime();
+                    return Math.abs(t - latestTime) < 20 * 1000;
+                });
+                if (!alreadyPresent) {
+                    entries.push(latest);
+                }
+            }
+        }
+        return entries;
+    }
+
     _reprocessHistory() {
-        if (!this._rawHistoryEntries || this._rawHistoryEntries.length === 0) {
+        if (!this._graph) return;
+
+        const allEntries = this._getEntriesWithLatest();
+        if (allEntries.length === 0) {
             this._graph.setData([]);
             return;
         }
@@ -437,7 +461,7 @@ class MyExtension extends PanelMenu.Button {
         const now = new Date();
         const startTime = new Date(now.getTime() - (this._graphHours * 60 * 60 * 1000));
 
-        const filteredEntries = this._rawHistoryEntries.filter(entry => {
+        const filteredEntries = allEntries.filter(entry => {
             const entryTime = new Date(entry.dateString || entry.date);
             return entryTime >= startTime && entryTime <= now && entry.sgv != null;
         });
@@ -500,6 +524,9 @@ class MyExtension extends PanelMenu.Button {
         this._updateBGDisplay();
         this._updateColors();
         this._checkAlerts(oldBG, this._currentBG);
+
+        // show up new reading on the graph
+        this._reprocessHistory();
     }
     
     _updateBGDisplay() {
