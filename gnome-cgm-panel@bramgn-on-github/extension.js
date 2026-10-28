@@ -218,6 +218,7 @@ class MyExtension extends PanelMenu.Button {
         this._historyData = [];
         this._rawHistoryEntries = [];
         this._inMemoryCache = {}; // For short-term caching between fetches
+        this._cacheData = this._cache.load() || {}; // Disk cache, loaded once and kept in memory
     }
     
     _createGraph() {
@@ -247,8 +248,8 @@ class MyExtension extends PanelMenu.Button {
     
     _initializeFetching() {
         // Load from disk cache first
-        const cachedData = this._cache.load();
-        if (cachedData) {
+        const cachedData = this._cacheData;
+        if (cachedData && (cachedData.lastReading || cachedData.history)) {
             this._log('Loaded data from disk cache.');
             if (cachedData.lastReading) {
                 this._updateBG(cachedData.lastReading);
@@ -517,9 +518,8 @@ class MyExtension extends PanelMenu.Button {
         this._cgmInterval = this._provider.getCgmInterval();
 
         // Save to on-disk cache
-        const cachedData = this._cache.load() || {};
-        cachedData.history = entries;
-        this._cache.save(cachedData);
+        this._cacheData.history = entries;
+        this._cache.save(this._cacheData);
 
         this._reprocessHistory();
     }
@@ -538,9 +538,8 @@ class MyExtension extends PanelMenu.Button {
         if (isNaN(this._lastUpdate.getTime())) this._lastUpdate = new Date();
         
         // Save to on-disk cache
-        const cachedData = this._cache.load() || {};
-        cachedData.lastReading = entry;
-        this._cache.save(cachedData);
+        this._cacheData.lastReading = entry;
+        this._cache.save(this._cacheData);
 
         this._updateBGDisplay();
         this._updateColors();
