@@ -2,8 +2,8 @@
   "uuid": "gnome-cgm-panel@bramgn-on-github",
   "name": "CGM panel widget",
   "description": "CGM glucose monitor with real-time display and historical graph",
-  "shell-version": ["47", "48", "49", "50"],
-  "version": 10,
+  "shell-version": ["47", "48", "49", "50", "51"],
+  "version": "11",
   "url": "https://github.com/bramgn/gnome-cgm-panel",
   "settings-schema": ""
 }
