@@ -680,7 +680,7 @@ export default class CGMPreferences extends ExtensionPreferences {
 
             const colorButton = new Gtk.ColorButton({
                 rgba: gdkColor,
-                use_alpha: true,
+                use_alpha: false,
             });
 
             colorRow.add_suffix(colorButton);
