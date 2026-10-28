@@ -123,6 +123,17 @@ class MyExtension extends PanelMenu.Button {
         this._reprocessHistory();
     }
 
+    _updateTimeButtonStyles() {
+        if (!this._timeButtons || this._isDestroyed) return;
+
+        Object.keys(this._timeButtons).forEach(buttonHours => {
+            const button = this._timeButtons[buttonHours];
+            if (!button) return;
+            const isActive = parseInt(buttonHours) === this._graphHours;
+            button.style = `padding: 4px 8px; margin: 2px; border-radius: 4px; font-size: 11px; ${isActive ? 'background-color: #0066cc; color: white;' : 'background-color: #333; color: #ccc; border: 1px solid #555;'}`;
+        });
+    }
+
     _setupConfigMonitor() {
         this._monitor = null;
         const configDir = Gio.File.new_for_path(this._config.configDir);
@@ -267,11 +278,18 @@ class MyExtension extends PanelMenu.Button {
         const oldToken = this._token;
         const oldProvider = this._config.get('provider') || 'nightscout';
         const oldUnits = this._config.get('units') || 'mg/dL';
+        const runtimeGraphHours = this._graphHours;
+        const oldConfigGraphHours = this._config.get('graphHours') || 6;
         
         this._config.reload();
         this._debugEnabled = this._config.get('debug');
         this._initializeConfig();
         
+        // _initializeConfig() reset the window to the config value
+        if (this._graphHours === oldConfigGraphHours) {
+            this._graphHours = runtimeGraphHours;
+        }
+
         const newProvider = this._config.get('provider') || 'nightscout';
         const newUnits = this._config.get('units') || 'mg/dL';
         const providerChanged = (oldProvider !== newProvider);
@@ -280,6 +298,9 @@ class MyExtension extends PanelMenu.Button {
 
         if (this._graph) {
             this._graph.setThresholds(this._config.get('thresholds'));
+            this._graph.setGraphHours(this._graphHours);
+            this._updateTimeButtonStyles();
+            this._reprocessHistory();
             this._graph.setColors(this._config.get('colors'));
             if (unitsChanged) {
                 this._graph.setUnits(newUnits);
@@ -610,14 +631,17 @@ class MyExtension extends PanelMenu.Button {
         }
         
         // Fall back to calculating from history if no direction provided
-        if (!this._rawHistoryEntries || this._rawHistoryEntries.length < 2) {
+        const trendEntries = this._getEntriesWithLatest();
+        if (trendEntries.length < 2) {
             this._log('Insufficient history for trend calculation');
             return '';
         }
         
-        let recent = this._rawHistoryEntries.slice(0, 6)
+        // Sort newest-first *before* slicing (LibreLink history is oldest-first)
+        let recent = trendEntries
             .filter(e => e.sgv != null && !isNaN(e.sgv))
-            .sort((a, b) => new Date(b.dateString || b.date) - new Date(a.dateString || a.date));
+            .sort((a, b) => new Date(b.dateString || b.date) - new Date(a.dateString || a.date))
+            .slice(0, 6);
         
         if (recent.length < 2) {
             this._log('Not enough valid recent entries for trend calculation');
@@ -627,7 +651,7 @@ class MyExtension extends PanelMenu.Button {
         let newest = recent[0];
         let older = recent[Math.min(3, recent.length - 1)];
         
-        let timeDiffMinutes = (new Date(newest.dateString) - new Date(older.dateString)) / (1000 * 60);
+        let timeDiffMinutes = (new Date(newest.dateString || newest.date) - new Date(older.dateString || older.date)) / (1000 * 60);
         if (timeDiffMinutes <= 0 || timeDiffMinutes > 60) {
             this._log(`Invalid time difference for trend: ${timeDiffMinutes} minutes`);
             return '';
@@ -638,12 +662,12 @@ class MyExtension extends PanelMenu.Button {
         
         this._log(`Calculated trend: ${changePerMinute.toFixed(2)} mg/dL per minute`);
         
+        // Symmetric thresholds: stable is anything between MODERATE_FALL and MODERATE_RISE
         if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.RAPID_RISE) return CONSTANTS.TREND_ARROWS.RAPID_RISE;
         if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.MODERATE_RISE) return CONSTANTS.TREND_ARROWS.MODERATE_RISE;
-        if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.STABLE) return CONSTANTS.TREND_ARROWS.STABLE;
-        if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.MODERATE_FALL) return CONSTANTS.TREND_ARROWS.MODERATE_FALL;
-        if (changePerMinute >= CONSTANTS.TREND_THRESHOLDS.RAPID_FALL) return CONSTANTS.TREND_ARROWS.RAPID_FALL;
-        return CONSTANTS.TREND_ARROWS.VERY_RAPID_FALL;
+        if (changePerMinute > CONSTANTS.TREND_THRESHOLDS.MODERATE_FALL) return CONSTANTS.TREND_ARROWS.STABLE;
+        if (changePerMinute > CONSTANTS.TREND_THRESHOLDS.RAPID_FALL) return CONSTANTS.TREND_ARROWS.MODERATE_FALL;
+        return CONSTANTS.TREND_ARROWS.RAPID_FALL;
     }
 
     _setLabelColor(color) {
@@ -655,6 +679,13 @@ class MyExtension extends PanelMenu.Button {
     _checkAlerts(oldBG, newBG) {
         const notifications = this._config.get('notifications');
         if (!notifications.enabled) return;
+
+        // Don't alert on old readings
+        const staleLimit = this._config.get('staleMinutes') || 15;
+        if (this._lastUpdate && (Date.now() - this._lastUpdate.getTime()) / 60000 > staleLimit) {
+            this._log('Skipping alert check: reading is stale');
+            return;
+        }
 
         const thresholds = this._config.get('thresholds');
         const units = this._config.get('units') || 'mg/dL';
@@ -788,12 +819,13 @@ class MyExtension extends PanelMenu.Button {
     }
 
     _calculateDelta() {
-        if (!this._rawHistoryEntries || this._rawHistoryEntries.length < 2) {
+        const deltaEntries = this._getEntriesWithLatest();
+        if (deltaEntries.length < 2) {
             return null;
         }
         
         // Get the most recent readings, sorted by time
-        let recent = this._rawHistoryEntries
+        let recent = deltaEntries
             .filter(e => e.sgv != null && !isNaN(e.sgv))
             .sort((a, b) => new Date(b.dateString || b.date) - new Date(a.dateString || a.date))
             .slice(0, 10); // Look at up to 10 recent readings
